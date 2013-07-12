@@ -1,50 +1,66 @@
-CC            = gcc
-CXX           = gcc
-LINK          = gcc
+TARGET     = px4joystick
+MAJOR      = 1
+MINOR      = 0.0
 
-CXXFLAGS      = 
-CFLAGS        = 
-INCPATH       =	mavlink/include/mavlink/v1.0/common
+CC         = gcc
+WARNINGS   = -Wall -Wextra -pedantic
 
-SOURCES       = main.c
-OBJECTS       = main.o
+INCLUDES   = -I./src -I./include
+LIBS       = -lpthread
 
-TARGET        = px4_joystick_interface
-PATHDIR	      = px4_joystick_interface
+VERSION    = ${MAJOR}.${MINOR}
+CPPFLAGS   = -DVERSION=\"${VERSION}\"
+STD        = c99
+CFLAGS     = -std=$(STD) ${INCLUDES} ${WARNINGS} ${CPPFLAGS}
+LDFLAGS    = ${LIBS}
 
-first: all
+CFLAGS_DBG = -DDEBUG -ggdb
+CFLAGS_RLS = -DNDEBUG -O3 -ffast-math
 
+SRCDIR     = src
+SRCEXT     = c
+SRC        = $(shell find $(SRCDIR) -name \*.$(SRCEXT) -type f -print)
 
-.SUFFIXES: .o .c .cpp .cc .cxx .C
+BUILDDIR   = build
+OBJDIR_DBG = ${BUILDDIR}/debug
+OBJDIR_RLS = ${BUILDDIR}/release
+OBJ_DBG    = $(patsubst $(SRCDIR)/%,$(OBJDIR_DBG)/%,$(patsubst %.$(SRCEXT),%.o,$(SRC)))
+OBJ_RLS    = $(patsubst $(SRCDIR)/%,$(OBJDIR_RLS)/%,$(patsubst %.$(SRCEXT),%.o,$(SRC)))
+DIRTREE_DBG= $(OBJDIR_DBG) \
+	     $(patsubst $(SRCDIR)/%,$(OBJDIR_DBG)/%,\
+	     $(shell find $(SRCDIR)/* -type d -print))
+DIRTREE_RLS= $(OBJDIR_RLS) \
+	     $(patsubst $(SRCDIR)/%,$(OBJDIR_RLS)/%,\
+	     $(shell find $(SRCDIR)/* -type d -print))
 
-.cpp.o:	
-	$(CXX) -c $(CXXFLAGS) -I $(INCPATH) -o "$@" "$<"
+all: debug
 
+release: makedirs ${OBJ_RLS}
+	@echo ' [LD] '${TARGET}
+	@${CC} ${OBJ_RLS} ${LDFLAGS} -o ${TARGET}
 
-.cc.o:
-	$(CXX) -c $(CXXFLAGS) -I $(INCPATH) -o "$@" "$<"
+debug: makedirs ${OBJ_DBG}
+	@echo ' [LD] '${TARGET}
+	@${CC} ${OBJ_DBG} ${LDFLAGS} -o ${TARGET}
 
+-include ${OBJ_DBG:.o=.d}
 
-.cxx.o:
-	$(CXX) -c $(CXXFLAGS) -I $(INCPATH) -o "$@" "$<"
+${OBJDIR_DBG}/%.o: ${SRCDIR}/%.$(SRCEXT)
+	@echo ' [CC] '$<
+	@${CC} ${CFLAGS} ${CFLAGS_DBG} -c -o $@ $<
+	@${CC} ${CFLAGS} ${CFLAGS_DBG} -MM $< > $(patsubst %.o,%.d,$@)
 
+${OBJDIR_RLS}/%.o: ${SRCDIR}/%.$(SRCEXT)
+	@echo ' [CC] '$<
+	@${CC} ${CFLAGS} ${CFLAGS_RLS} -c -o $@ $<
+	@${CC} ${CFLAGS} ${CFLAGS_RLS} \
+		-MM $< > $(patsubst $(OBJDIR_RLS)/%,$(OBJDIR_DBG)/%,\
+			$(patsubst %.o,%.d,$@))
 
-.C.o:
-	$(CXX) -c $(CXXFLAGS) -I $(INCPATH) -o "$@" "$<"
+makedirs:
+	@mkdir -p ${DIRTREE_DBG}
+	@mkdir -p ${DIRTREE_RLS}
 
-.c.o:
-	$(CXX) -c $(CFLAGS) -I $(INCPATH) -o "$@" "$<"
-
-
-all: $(TARGET) $(TARGETARM)
-
-$(TARGET):  $(OBJECTS)
-	$(CXX) $(CXXFLAGS) -o $(TARGET) $(OBJECTS) -lrt
-	
-clean: 
-	rm -f $(OBJECTS) $(TARGET)
-
-
-
-
-
+clean:
+	@rm -rf ${BUILDDIR}
+	@rm -f ${TARGET}
