@@ -294,6 +294,8 @@ main() {
 			js_packet.axis[js.number] = (int16_t)js.value;
 			break;
 		}
+		if (js.number == YAW)
+			js_packet.axis[js.number] = -js_packet.axis[js.number];
 
 		/*
 		 * parse button values

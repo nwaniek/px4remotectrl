@@ -1,4 +1,4 @@
-TARGET     = px4joystick
+TARGET     = px4remotectrl
 MAJOR      = 1
 MINOR      = 0.0
 
