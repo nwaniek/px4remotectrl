@@ -23,6 +23,7 @@
 #include <stdbool.h>
 #include <pthread.h>
 #include <signal.h>
+#include <getopt.h>
 
 #include "js_packet.h"
 #include "rctl_config.h"
@@ -180,6 +181,37 @@ mainloop(int js_fd, rctl_link_t *link) {
 	}
 }
 
+void
+usage() {
+	fprintf(stderr, "Usage: px4remotectrl [-i ip] [-j port] [-m port]\n"
+			"  -i   Target/MAV IPv4 (default 127.0.0.1)\n"
+			"  -j   Joystick port on MAV (default 56000)\n"
+			"  -m   Mavlink port on MAV (default 56001)\n");
+}
+
+void
+parse_argv(rctl_config_t *cfg, int argc, char *argv[]) {
+	int opt, slen;
+	while ((opt = getopt(argc, argv, "i:j:m:")) != -1) {
+		switch (opt) {
+		case 'i':
+			slen = strlen(optarg);
+			cfg->target_ip4 = malloc(sizeof(char) * (slen + 1));
+			strncpy(cfg->target_ip4, optarg, slen);
+			break;
+		case 'j':
+			cfg->joystick_port = atoi(optarg);
+			break;
+		case 'm':
+			cfg->mavlink_port = atoi(optarg);
+			break;
+		default:
+			usage();
+			exit(EXIT_FAILURE);
+		}
+	}
+}
+
 int
 main(int argc, char *argv[]) {
 	/*
@@ -208,9 +240,10 @@ main(int argc, char *argv[]) {
 	int js_fd = open_joystick(js_device);
 
 	/*
-	 * configuration setup
+	 * setup the (default) configuration, parse if arguments were
+	 * passed in
 	 */
-	cfg->target_ip4		= "192.168.201.46";
+	cfg->target_ip4		= "127.0.0.1";
 	cfg->joystick_port	= 56000;
 	cfg->mavlink_port	= 56001;
 	cfg->system_id		= 255;
@@ -218,6 +251,8 @@ main(int argc, char *argv[]) {
 	cfg->target_id		= 1;
 	cfg->target_comp	= 0;
 	cfg->mavlink_handler	= mavlink_msg_handler;
+	if (argc > 1)
+		parse_argv(cfg, argc, argv);
 
 	/*
 	 */

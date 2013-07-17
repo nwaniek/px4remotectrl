@@ -30,7 +30,5 @@ typedef struct {
 void rctl_alloc_config(rctl_config_t **cfg);
 void rctl_free_config(rctl_config_t **cfg);
 
-// void rctl_parse_argv(rctl_config_t *cfg, int argc, char *argv[]);
-
 #endif /* __CONFIG_H__3DEFF63B_7562_4EFC_94DD_3660976C49FA */
 
