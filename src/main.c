@@ -25,6 +25,7 @@
 #include <signal.h>
 
 #include "js_packet.h"
+#include "rctl_config.h"
 
 /*
  * Socket Setup
@@ -45,7 +46,6 @@
 #define SYS_ID		255
 #define SYS_COMP	0
 #define TARGET_ID	1
-
 
 enum {
 	YAW=0,
@@ -186,6 +186,8 @@ mavlink_recv_thread(void *ptr) {
 	unsigned char buf[MAVLINK_MAX_PACKET_LEN];
 	int *sockfd = (int*)ptr;
 
+	FILE *imu_fd = fopen("imudata.txt", "w");
+
 	fprintf(stdout, "recv thread started...\n");
 	while (mrt_running) {
 		ssize_t r = recv(*sockfd, buf, MAVLINK_MAX_PACKET_LEN, 0);
@@ -201,19 +203,54 @@ mavlink_recv_thread(void *ptr) {
 			for (ssize_t i = 0; i < r; i++) {
 				decode_state = mavlink_parse_char(link_id, (uint8_t)(buf[i]), &msg, &status);
 				if (decode_state == 1) {
-					if (msg.msgid == MAVLINK_MSG_ID_HEARTBEAT) {
-						mavlink_heartbeat_t hb;
-						mavlink_msg_heartbeat_decode(&msg, &hb);
 
-						printf("%d base mode: %u custom mode: %u\n", MAV_MODE_FLAG_MANUAL_INPUT_ENABLED, hb.base_mode, hb.custom_mode);
+					mavlink_highres_imu_t imu;
+					mavlink_heartbeat_t hb;
+					mavlink_sys_status_t sys;
+
+					switch (msg.msgid) {
+					case MAVLINK_MSG_ID_HIGHRES_IMU:
+						mavlink_msg_highres_imu_decode(&msg, &imu);
+						// printf("IMU Data. Accel (%4.4f, %4.4f, %4.4f)\n", imu.xacc, imu.yacc, imu.zacc);
+						//
+						//
+						fprintf(imu_fd, "%12ld %9.4f %9.4f %9.4f %9.4f %9.4f %9.4f %9.4f %9.4f\n",
+								microsSinceEpoch(),
+								imu.xacc,
+								imu.yacc,
+								imu.zacc,
+								imu.xgyro,
+								imu.ygyro,
+								imu.zgyro,
+								imu.xmag,
+								imu.ymag,
+								imu.zmag);
+						break;
+
+					case MAVLINK_MSG_ID_HEARTBEAT:
+						mavlink_msg_heartbeat_decode(&msg, &hb);
+						printf("Heartbeat. Base Mode: %u Custom Mode: %u\n", hb.base_mode, hb.custom_mode);
 						// TODO: mutexes?
 						baseMode = hb.base_mode;
 						navMode = hb.custom_mode;
+						break;
+
+					case MAVLINK_MSG_ID_SYS_STATUS:
+						mavlink_msg_sys_status_decode(&msg, &sys);
+						printf("System Status. Battery Voltage: %u [mV] (%d %% remaining)\n", sys.voltage_battery, sys.battery_remaining);
+						break;
+
+					default:
+						// printf("Unhandled msgid %d\n", msg.msgid);
+						break;
 					}
 				}
 			}
 		}
 	}
+
+	fflush(imu_fd);
+	fclose(imu_fd);
 
 	return NULL;
 }
@@ -247,8 +284,10 @@ static volatile bool running = true;
 
 void
 sigint_handler(int signum) {
-	printf("SIGINT received\n");
-	running = false;
+	if (signum == SIGINT) {
+		printf("SIGINT received\n");
+		running = false;
+	}
 }
 
 typedef enum {
@@ -258,7 +297,15 @@ typedef enum {
 } button_state_t;
 
 int
-main() {
+main(int argc, char *argv[]) {
+
+#if 0
+	rctl_config_t *cfg;
+	rctl_alloc_config(&cfg);
+	rctl_parse_argv(cfg, argc, argv);
+
+	rctl_free_config(&cfg);
+#else
 	// TODO: change to sigaction
 	signal(SIGINT, sigint_handler);
 
@@ -296,6 +343,8 @@ main() {
 		}
 		if (js.number == YAW)
 			js_packet.axis[js.number] = -js_packet.axis[js.number];
+
+		// js_packet.axis[YAW] = 0;
 
 		/*
 		 * parse button values
@@ -377,7 +426,7 @@ main() {
 	close(ml_sock);
 	close(js_sock);
 	close(js_fd);
-	usleep(1000);
+	usleep(10000);
 	return 0;
-
+#endif
 }
