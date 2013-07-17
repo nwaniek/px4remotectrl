@@ -1,3 +1,3 @@
 #!/bin/sh
 
-./px4remotectrl -i 192.168.201.44
+./px4remotectrl -i 192.168.201.44 "$@"

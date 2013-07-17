@@ -32,7 +32,7 @@
 
 static bool running = true;
 
-#define JS_DEVICE "/dev/input/js0"
+
 
 int
 open_joystick(const char *js_device) {
@@ -183,20 +183,21 @@ mainloop(int js_fd, rctl_link_t *link) {
 
 void
 usage() {
-	fprintf(stderr, "Usage: px4remotectrl [-i ip] [-j port] [-m port]\n"
+	fprintf(stderr, "Usage: px4remotectrl [-d dev] [-i ip] [-j port] [-m port]\n"
+			"  -d   Joystick Device (default /dev/input/js0)\n"
 			"  -i   Target/MAV IPv4 (default 127.0.0.1)\n"
 			"  -j   Joystick port on MAV (default 56000)\n"
 			"  -m   Mavlink port on MAV (default 56001)\n");
 }
 
 void
-parse_argv(rctl_config_t *cfg, int argc, char *argv[]) {
+parse_argv(rctl_config_t *cfg, int argc, char *argv[], char **jdev) {
 	int opt, slen;
-	while ((opt = getopt(argc, argv, "i:j:m:")) != -1) {
+	while ((opt = getopt(argc, argv, "i:j:m:d:")) != -1) {
 		switch (opt) {
 		case 'i':
 			slen = strlen(optarg);
-			cfg->target_ip4 = malloc(sizeof(char) * (slen + 1));
+			cfg->target_ip4 = calloc(slen + 1, sizeof(char));
 			strncpy(cfg->target_ip4, optarg, slen);
 			break;
 		case 'j':
@@ -204,6 +205,11 @@ parse_argv(rctl_config_t *cfg, int argc, char *argv[]) {
 			break;
 		case 'm':
 			cfg->mavlink_port = atoi(optarg);
+			break;
+		case 'd':
+			slen = strlen(optarg);
+			*jdev = calloc(slen + 1, sizeof(char));
+			strncpy(*jdev, optarg, slen);
 			break;
 		default:
 			usage();
@@ -215,7 +221,7 @@ parse_argv(rctl_config_t *cfg, int argc, char *argv[]) {
 int
 main(int argc, char *argv[]) {
 	/*
-	 * register sigint handler to make it possible close all open
+	 * register sigint handler to make it possible to close all open
 	 * sockets and exit in a sane state
 	 */
 	struct sigaction sa;
@@ -232,16 +238,7 @@ main(int argc, char *argv[]) {
 	rctl_alloc_link(&link);
 
 	/*
-	 * open joystick device
-	 */
-	const char *js_device = JS_DEVICE;
-	if (argc > 1)
-		js_device = argv[1];
-	int js_fd = open_joystick(js_device);
-
-	/*
-	 * setup the (default) configuration, parse if arguments were
-	 * passed in
+	 * setup the default configuration
 	 */
 	cfg->target_ip4		= "127.0.0.1";
 	cfg->joystick_port	= 56000;
@@ -251,8 +248,18 @@ main(int argc, char *argv[]) {
 	cfg->target_id		= 1;
 	cfg->target_comp	= 0;
 	cfg->mavlink_handler	= mavlink_msg_handler;
+	char *jdev		= "/dev/input/js0";
+
+	/*
+	 * parse arguments, if any
+	 */
 	if (argc > 1)
-		parse_argv(cfg, argc, argv);
+		parse_argv(cfg, argc, argv, &jdev);
+
+	/*
+	 * open joystick device
+	 */
+	int js_fd = open_joystick(jdev);
 
 	/*
 	 */
