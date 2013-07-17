@@ -2,7 +2,7 @@ TARGET     = px4remotectrl
 MAJOR      = 1
 MINOR      = 0.0
 
-CC         = gcc
+CC         = clang
 WARNINGS   = -Wall -Wextra -pedantic
 
 INCLUDES   = -I./src -I./include

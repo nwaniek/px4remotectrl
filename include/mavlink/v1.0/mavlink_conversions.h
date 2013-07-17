@@ -129,3 +129,4 @@ MAVLINK_HELPER void mavlink_euler_to_dcm(float roll, float pitch, float yaw, flo
 }
 
 #endif
+
