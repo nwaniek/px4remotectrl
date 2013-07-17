@@ -120,8 +120,8 @@ mainloop(int js_fd, rctl_link_t *link) {
 	uint64_t last_time_stamp = microsSinceEpoch();
 
 	memset(&js, 0, sizeof(js));
-	r = p = y = t = 0;
-	lb = rb = INT16_MIN;
+	r = p = y = 0;
+	t = lb = rb = INT16_MIN;
 
 	// empty the joystick file buffer
 	while (read(js_fd, &js, sizeof(js)) > 0);
