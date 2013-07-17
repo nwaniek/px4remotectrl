@@ -32,8 +32,6 @@
 
 static bool running = true;
 
-
-
 int
 open_joystick(const char *js_device) {
 	int js_fd = open(js_device, O_RDONLY);
@@ -48,13 +46,6 @@ sigint_handler(int signum) {
 	if (signum == SIGINT)
 		running = false;
 }
-
-typedef enum {
-	BUTTON_UNCHANGED,
-	BUTTON_PRESSED,
-	BUTTON_RELEASED
-} button_state_t;
-
 
 /*
  * mavlink_msg_handler is triggered by a separate thread within the rctl
