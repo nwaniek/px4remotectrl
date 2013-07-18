@@ -184,8 +184,11 @@ usage() {
 void
 parse_argv(rctl_config_t *cfg, int argc, char *argv[], char **jdev) {
 	int opt, slen;
-	while ((opt = getopt(argc, argv, "i:j:m:d:")) != -1) {
+	while ((opt = getopt(argc, argv, "hi:j:m:d:")) != -1) {
 		switch (opt) {
+		case 'h':
+			usage();
+			exit(EXIT_SUCCESS);
 		case 'i':
 			slen = strlen(optarg);
 			cfg->target_ip4 = calloc(slen + 1, sizeof(char));
