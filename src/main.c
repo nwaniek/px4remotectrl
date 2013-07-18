@@ -29,6 +29,7 @@
 #include "rctl_config.h"
 #include "rctl_link.h"
 #include "util.h"
+#include "edvs.h"
 
 static bool running = true;
 
@@ -282,6 +283,7 @@ main(int argc, char *argv[]) {
 	 * main part of the application
 	 */
 	rctl_connect_mav(cfg, link);
+	edvs_start(uart_fd);
 	mainloop(js_fd, uart_fd, link);
 	rctl_disarm(link);
 	rctl_disconnect_mav(link);
@@ -289,6 +291,7 @@ main(int argc, char *argv[]) {
 	/*
 	 * free and close
 	 */
+	edvs_stop();
 	rctl_free_link(&link);
 	rctl_free_config(&cfg);
 	if (js_fd >= 0) close(js_fd);
