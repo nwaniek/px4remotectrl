@@ -41,6 +41,15 @@ open_joystick(const char *js_device) {
 	return js_fd;
 }
 
+int
+open_uart(const char *uart_device) {
+	int fd = open(uart_device, O_RDONLY);
+	if (fd == -1)
+		fprintf(stderr, "Could not open UART device '%s'.\n", uart_device);
+	fcntl(fd, F_SETFL, O_NONBLOCK);
+	return -1;
+}
+
 void
 sigint_handler(int signum) {
 	if (signum == SIGINT)
@@ -114,10 +123,11 @@ parse_buttons(int lb, int rb) {
 }
 
 void
-mainloop(int js_fd, rctl_link_t *link) {
+mainloop(int js_fd, int uart_fd, rctl_link_t *link) {
 	int16_t r, p, y, t, lb, rb;
 	struct js_event js;
 	uint64_t last_time_stamp = microsSinceEpoch();
+	bool read_uart_commands = false;
 
 	memset(&js, 0, sizeof(js));
 	r = p = y = 0;
@@ -128,40 +138,44 @@ mainloop(int js_fd, rctl_link_t *link) {
 
 	// run main loop
 	while (running) {
-		read(js_fd, &js, sizeof(js));
-		switch (js.type & ~JS_EVENT_INIT) {
-		case JS_EVENT_AXIS:
-			switch (js.number) {
-			case YAW:
-				y = (int16_t)js.value;
-				break;
-			case ROLL:
-				r = (int16_t)js.value;
-				break;
-			case PITCH:
-				p = (int16_t)js.value;
-				break;
-			case THROTTLE:
-				t = (int16_t)js.value;
-				break;
-			case LEFTBUT:
-				lb = (int16_t)js.value;
-				break;
-			case RIGHTBUT:
-				rb = (int16_t)js.value;
-				break;
-			default:
+		if (read(js_fd, &js, sizeof(js)) > 0) {
+			switch (js.type & ~JS_EVENT_INIT) {
+			case JS_EVENT_AXIS:
+				switch (js.number) {
+				case YAW:
+					y = (int16_t)js.value;
+					break;
+				case ROLL:
+					r = (int16_t)js.value;
+					break;
+				case PITCH:
+					p = (int16_t)js.value;
+					break;
+				case THROTTLE:
+					t = (int16_t)js.value;
+					break;
+				case LEFTBUT:
+					lb = (int16_t)js.value;
+					break;
+				case RIGHTBUT:
+					rb = (int16_t)js.value;
+					break;
+				default:
+					break;
+				}
 				break;
 			}
-			break;
 		}
 		int bstate = parse_buttons(lb, rb);
 		if (bstate & BUTTON1_PRESSED) {
 			rctl_toggle_armed(link);
 		}
 		if (bstate & BUTTON2_PRESSED) {
-			rctl_disarm(link);
-			running = false;
+			read_uart_commands = !read_uart_commands;
+		}
+
+		if (read_uart_commands && (uart_fd > 0)) {
+			// TODO read and overwrite commands from uart
 		}
 
 		// send commands to drone
@@ -173,22 +187,20 @@ mainloop(int js_fd, rctl_link_t *link) {
 }
 
 void
-usage() {
-	fprintf(stderr, "Usage: px4remotectrl [-d dev] [-i ip] [-j port] [-m port]\n"
+usage(FILE *stream) {
+	fprintf(stream, "Usage: px4remotectrl [-d dev] [-i ip] [-j port] [-m port] [-u uart]\n"
 			"  -d   Joystick Device (default /dev/input/js0)\n"
 			"  -i   Target/MAV IPv4 (default 127.0.0.1)\n"
 			"  -j   Joystick port on MAV (default 56000)\n"
-			"  -m   Mavlink port on MAV (default 56001)\n");
+			"  -m   Mavlink port on MAV (default 56001)\n"
+			"  -u   UART port to read commands from (default /dev/ttyUSB0)\n");
 }
 
 void
-parse_argv(rctl_config_t *cfg, int argc, char *argv[], char **jdev) {
+parse_argv(rctl_config_t *cfg, int argc, char *argv[], char **jdev, char **uart) {
 	int opt, slen;
-	while ((opt = getopt(argc, argv, "hi:j:m:d:")) != -1) {
+	while ((opt = getopt(argc, argv, "hi:j:m:d:u:")) != -1) {
 		switch (opt) {
-		case 'h':
-			usage();
-			exit(EXIT_SUCCESS);
 		case 'i':
 			slen = strlen(optarg);
 			cfg->target_ip4 = calloc(slen + 1, sizeof(char));
@@ -205,8 +217,17 @@ parse_argv(rctl_config_t *cfg, int argc, char *argv[], char **jdev) {
 			*jdev = calloc(slen + 1, sizeof(char));
 			strncpy(*jdev, optarg, slen);
 			break;
+		case 'u':
+			slen = strlen(optarg);
+			*uart = calloc(slen + 1, sizeof(char));
+			strncpy(*uart, optarg, slen);
+			break;
+
+		case 'h':
+			usage(stdout);
+			exit(EXIT_SUCCESS);
 		default:
-			usage();
+			usage(stderr);
 			exit(EXIT_FAILURE);
 		}
 	}
@@ -243,26 +264,34 @@ main(int argc, char *argv[]) {
 	cfg->target_comp	= 0;
 	cfg->mavlink_handler	= mavlink_msg_handler;
 	char *jdev		= "/dev/input/js0";
+	char *uart_dev		= "/dev/ttyUSB0";
 
 	/*
 	 * parse arguments, if any
 	 */
 	if (argc > 1)
-		parse_argv(cfg, argc, argv, &jdev);
+		parse_argv(cfg, argc, argv, &jdev, &uart_dev);
 
 	/*
-	 * open joystick device
+	 * open joystick, possibly UART
 	 */
 	int js_fd = open_joystick(jdev);
+	int uart_fd = open_uart(uart_dev);
 
 	/*
+	 * main part of the application
 	 */
 	rctl_connect_mav(cfg, link);
-	mainloop(js_fd, link);
+	mainloop(js_fd, uart_fd, link);
 	rctl_disarm(link);
 	rctl_disconnect_mav(link);
 
+	/*
+	 * free and close
+	 */
 	rctl_free_link(&link);
 	rctl_free_config(&cfg);
+	if (js_fd >= 0) close(js_fd);
+	if (uart_fd >= 0) close(uart_fd);
 }
 
